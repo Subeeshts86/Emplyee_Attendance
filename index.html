@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Employee Attendance</title>
+    <meta name="description"
+        content="Professional daily staff attendance tracking and reporting application. Manage retailers, locations, departments, and generate PDF timesheets.">
+
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Attendance">
+    <link rel="apple-touch-icon" href="Attendance.png">
+    <meta name="theme-color" content="#1d4ed8">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script> <!-- SheetJS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
+    <script src="https://unpkg.com/lucide@0.469.0"></script>
+    <style>
+        /* CRITICAL INLINE STYLES FOR ABOUT TAB */
+        #about {
+            padding: 1rem;
+        }
+
+        .about-card {
+            max-width: 600px;
+            margin: 2rem auto;
+            text-align: center;
+            background: #ffffff;
+            color: #0f172a;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            border: 1px solid #e2e8f0;
+            display: block;
+            opacity: 1;
+            visibility: visible;
+        }
+
+        [data-theme="dark"] .about-card {
+            background: #1e293b !important;
+            color: #f8fafc !important;
+            border-color: #334155;
+        }
+
+        .about-header {
+            padding: 2rem 1rem 1rem;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        [data-theme="dark"] .about-header {
+            border-color: #334155;
+        }
+
+        .logo-container {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1rem;
+            background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 8px 16px rgba(59, 130, 246, 0.3);
+        }
+
+        .app-logo-large {
+            width: 48px;
+            height: 48px;
+            color: white;
+        }
+
+        .about-header h2 {
+            font-size: 1.5rem;
+            margin: 0 0 0.5rem 0;
+        }
+
+        .version-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 999px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        [data-theme="dark"] .version-badge {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .about-body {
+            padding: 1.5rem;
+        }
+
+        .about-info-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .info-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem;
+            background: rgba(0, 0, 0, 0.02);
+            border-radius: 12px;
+            text-align: left;
+        }
+
+        [data-theme="dark"] .info-item {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .icon-box {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+            border-radius: 10px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white !important;
+        }
+
+        .icon-box i,
+        .icon-box svg {
+            color: white !important;
+            stroke: white !important;
+            fill: none !important;
+            width: 20px;
+            height: 20px;
+        }
+
+        .info-text {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .info-text label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            font-weight: 600;
+            opacity: 0.7;
+        }
+
+        .about-footer {
+            padding: 1rem;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        [data-theme="dark"] .about-footer {
+            border-color: #334155;
+        }
+    </style>
+</head>
+
+<body>
+
+
+
+    <div class="app-container">
+        <div id="ptr-indicator" class="ptr-indicator">
+            <i data-lucide="rotate-ccw"></i>
+            <span>Pull to Reset</span>
+        </div>
+
+        <header class="app-header">
+            <h1>Attendance</h1>
+            <div id="offline-indicator" class="offline-indicator" style="display: none;">
+                <i data-lucide="wifi-off" style="width: 14px; height: 14px;"></i>
+                <span>Offline</span>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <button id="langToggle" class="theme-btn" style="font-weight: 800; font-size: 1.4rem;">ع</button>
+                <button id="themeToggle" class="theme-btn"><i data-lucide="moon"></i></button>
+            </div>
+        </header>
+
+        <nav class="tab-nav">
+            <button class="tab-btn active" data-tab="attendance">
+                <i data-lucide="clipboard-list"></i><span>Attendance</span>
+            </button>
+            <button class="tab-btn" data-tab="data">
+                <i data-lucide="database"></i><span>Data</span>
+            </button>
+
+            <button class="tab-btn" data-tab="settings">
+                <i data-lucide="settings"></i><span>Settings</span>
+            </button>
+            <button class="tab-btn" data-tab="about">
+                <i data-lucide="info"></i><span>About</span>
+            </button>
+        </nav>
+
+        <main id="main-content">
+            <section id="attendance" class="tab-pane active">
+                <div style="padding: 1rem;">
+                    <h2>Employee Attendance</h2>
+                </div>
+
+                <div class="card form-card">
+                    <div class="form-group-row">
+                        <div class="form-group">
+                            <label data-i18n="empName">Employee Name</label>
+                            <input type="text" id="empName" placeholder="Enter Name">
+                        </div>
+                        <div class="form-group">
+                            <label data-i18n="civilId">Civil ID No.</label>
+                            <input type="text" id="civilId" placeholder="Enter the No." maxlength="12"
+                                inputmode="numeric" pattern="\d*">
+                        </div>
+                    </div>
+
+                    <div class="form-group-row">
+                        <div class="form-group">
+                            <label data-i18n="retailer">Retailer</label>
+                            <div id="retailerSelect" class="select-box" onclick="openHeaderPicker('retailer')">
+                                <span id="retailerText">Select Retailer</span><i data-lucide="chevron-down"
+                                    class="select-icon"></i>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label data-i18n="location">Location</label>
+                            <div id="locationSelect" class="select-box" onclick="openHeaderPicker('location')">
+                                <span id="locationText">Select Location</span><i data-lucide="chevron-down"
+                                    class="select-icon"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group-row">
+                        <div class="form-group">
+                            <label data-i18n="department">Department</label>
+                            <div id="deptSelect" class="select-box" onclick="openHeaderPicker('department')">
+                                <span id="deptText">Select Department</span><i data-lucide="chevron-down"
+                                    class="select-icon"></i>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label data-i18n="designation">Designation</label>
+                            <div id="desigSelect" class="select-box" onclick="openHeaderPicker('designation')">
+                                <span id="desigText">Select Designation</span><i data-lucide="chevron-down"
+                                    class="select-icon"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group-row">
+                        <div class="form-group">
+                            <label data-i18n="month">Month</label>
+                            <div id="monthSelect" class="select-box" onclick="openHeaderPicker('month')">
+                                <span id="monthText">Select Month</span><i data-lucide="chevron-down"
+                                    class="select-icon"></i>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label data-i18n="year">Year</label>
+                            <div id="yearSelect" class="select-box" onclick="openHeaderPicker('year')">
+                                <span id="yearText">Select Year</span><i data-lucide="chevron-down"
+                                    class="select-icon"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="attendance-table-header">
+                    <span data-i18n="day">Day</span><span data-i18n="login">Login</span><span
+                        data-i18n="logout">Logout</span><span data-i18n="remarks">Remarks</span>
+                </div>
+
+                <div id="attendance-list" class="attendance-list">
+                    <div class="empty-state" style="padding: 2rem; text-align: center; color: #999;">Loading...</div>
+                </div>
+
+                <div class="action-bar box-shadow-top">
+                    <!-- Swapped Print/Save Buttons and Reduced Height (v3.0.11) -->
+                    <button id="printBtn" class="btn btn-secondary"><i data-lucide="printer"></i> Print</button>
+                    <button id="clearBtn" class="btn btn-outline"><i data-lucide="rotate-ccw"></i> Clear</button>
+                    <button id="saveBtn" class="btn btn-primary"><i data-lucide="save"></i> Save PDF</button>
+                </div>
+            </section>
+
+            <section id="data" class="tab-pane">
+                <div style="padding: 1rem;">
+
+                    <div class="data-header"
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h2>Saved Data</h2>
+                    </div>
+
+                    <div class="sub-tabs">
+                        <button class="sub-tab-btn active" onclick="switchDataSubTab('list')" id="subTabList">List
+                            View</button>
+                        <button class="sub-tab-btn" onclick="switchDataSubTab('calendar')" id="subTabCalendar">Calendar
+                            View</button>
+                    </div>
+
+
+
+                    <!-- Calendar Container (Initially Hidden) -->
+                    <div id="calendarContainer" class="calendar-container card"
+                        style="display: none; margin: 0 0 1rem 0; padding: 1rem;">
+                        <div class="calendar-header">
+                            <button id="prevMonthBtn" class="btn-icon-small"><i data-lucide="chevron-left"></i></button>
+                            <h2 id="currentMonthYear">January 2025</h2>
+                            <button id="nextMonthBtn" class="btn-icon-small"><i
+                                    data-lucide="chevron-right"></i></button>
+                        </div>
+                        <div class="calendar-grid-header">
+                            <div>Su</div>
+                            <div>Mo</div>
+                            <div>Tu</div>
+                            <div>We</div>
+                            <div>Th</div>
+                            <div>Fr</div>
+                            <div>Sa</div>
+                        </div>
+                        <div id="calendarGrid" class="calendar-grid-body">
+                            <!-- Days will be generated here -->
+                        </div>
+                        <div class="calendar-legend">
+                            <div class="legend-item"><span class="dot present"></span>Present</div>
+                            <div class="legend-item"><span class="dot sick-leave"></span>Sick Leave</div>
+                            <div class="legend-item"><span class="dot comp-off"></span>Comp Off</div>
+                        </div>
+
+                        <!-- Quick Stats Dashboard (Moved inside Calendar) -->
+                        <div style="margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+                            <h3 style="margin: 0 0 0.75rem 0; font-size: 0.95rem; color: var(--text-muted);">
+                                <i data-lucide="bar-chart-3"
+                                    style="width: 16px; height: 16px; display: inline; margin-right: 4px;"></i>
+                                Current Month Stats
+                            </h3>
+                            <div
+                                style="display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 0.5rem;">
+                                <div
+                                    style="text-align: center; padding: 0.5rem; background: var(--bg-surface); border-radius: 8px;">
+                                    <div style="font-size: 1.25rem; font-weight: 700; color: var(--primary);"
+                                        id="statsWorkingDays">0</div>
+                                    <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">Working
+                                        Days
+                                    </div>
+                                </div>
+                                <div
+                                    style="text-align: center; padding: 0.5rem; background: var(--bg-surface); border-radius: 8px;">
+                                    <div style="font-size: 1.25rem; font-weight: 700; color: #10b981;"
+                                        id="statsPresent">
+                                        0
+                                    </div>
+                                    <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">Present
+                                    </div>
+                                </div>
+                                <div
+                                    style="text-align: center; padding: 0.5rem; background: var(--bg-surface); border-radius: 8px;">
+                                    <div style="font-size: 1.25rem; font-weight: 700; color: #f59e0b;"
+                                        id="statsSickLeave">
+                                        0
+                                    </div>
+                                    <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">Sick
+                                        Leave
+                                    </div>
+                                </div>
+                                <div
+                                    style="text-align: center; padding: 0.5rem; background: var(--bg-surface); border-radius: 8px;">
+                                    <div style="font-size: 1.25rem; font-weight: 700; color: var(--primary-light);"
+                                        id="statsCompOff">0</div>
+                                    <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">Comp Off
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="data-list-container" class="list-container" style="max-height: none; overflow: visible;">
+                        <!-- Data Items Rendered Here -->
+                        <div class="empty-state" style="text-align: center; color: var(--text-muted); padding: 2rem;">No
+                            saved records found.</div>
+                    </div>
+
+                    <!-- Storage Monitor (Moved Bottom) -->
+                    <div class="card"
+                        style="margin: 1rem 0 1rem 0; padding: 1rem; background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-surface) 100%);">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                            <h3 style="margin: 0; font-size: 0.95rem; color: var(--text-muted);"><i
+                                    data-lucide="hard-drive"
+                                    style="width: 16px; height: 16px; display: inline; margin-right: 4px;"></i> Storage
+                                Usage</h3>
+                            <span id="storageUsed" style="font-weight: 600; font-size: 0.9rem;">0 KB</span>
+                        </div>
+                        <div
+                            style="background: var(--bg-body); border-radius: 999px; height: 8px; overflow: hidden; margin-bottom: 0.5rem;">
+                            <div id="storageBar"
+                                style="height: 100%; background: linear-gradient(90deg, var(--primary), var(--primary-light)); width: 0%; transition: width 0.3s;">
+                            </div>
+                        </div>
+                        <div
+                            style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted);">
+                            <span><i data-lucide="database" style="width: 12px; height: 12px; display: inline;"></i>
+                                <span id="recordCount">0</span> records</span>
+                            <span id="storagePercent">0%</span>
+                        </div>
+                    </div>
+
+                    <!-- Data Management (Backup & Restore) - Moved here -->
+                    <div class="card settings-card" style="margin-top: 1rem;">
+                        <h3><i data-lucide="database" style="width: 18px; height: 18px; margin-right: 6px;"></i> Data
+                            Management</h3>
+                        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                            <button id="backupBtn" class="btn btn-primary"
+                                style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                                <i data-lucide="download"></i> Backup Data
+                            </button>
+                            <button id="restoreBtn" class="btn btn-secondary"
+                                style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.5rem; border: 1px solid var(--border);">
+                                <i data-lucide="upload"></i> Restore Backup
+                            </button>
+                            <input type="file" id="restoreInput" accept="application/json" style="display: none;">
+                        </div>
+                        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.75rem;">
+                            <strong>Note:</strong> restoring a backup will <u>delete and replace</u> all current data on
+                            this device.
+                        </p>
+                    </div>
+
+                    <!-- Danger Zone: Remove All Data (Moved from Header) -->
+                    <div style="height: 2rem; width: 100%;"></div>
+                    <div class="card settings-card"
+                        style="margin-top: 0; border: 1px solid #fee2e2; background: #fff5f5;">
+                        <h3><i data-lucide="trash-2"
+                                style="width: 18px; height: 18px; margin-right: 6px; color: #ef4444;"></i> Danger Zone
+                        </h3>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+                            Permanently delete all attendance records and application data.
+                        </p>
+                        <button id="deleteAllBtn" class="btn"
+                            style="width: 100%; background: #ef4444; color: white; border: none; padding: 0.75rem; border-radius: 8px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                            <i data-lucide="alert-triangle" style="width: 16px; height: 16px;"></i> Remove All Data
+                        </button>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- Preview Modal -->
+            <div id="preview-modal" class="picker-overlay hidden" style="z-index: 2500;">
+                <div class="picker-card"
+                    style="height: 90vh; max-height: 90vh !important; width: 95% !important; max-width: 600px !important; padding: 0 !important;">
+                    <div class="picker-header" style="padding: 1rem; margin-bottom: 0;">
+                        <h3>Edit Entry</h3>
+                        <button id="closePreviewBtn" class="btn-icon-sm"><i data-lucide="x"></i></button>
+                    </div>
+                    <div id="preview-body" class="picker-body" style="padding: 1rem 0; padding-bottom: 80px;">
+                        <!-- Dynamic Content of Preview -->
+                    </div>
+                    <div class="action-bar"
+                        style="position: absolute; bottom: 0; padding-bottom: 1rem; background: var(--bg-card);">
+                        <button id="previewSaveBtn" class="btn btn-primary"><i data-lucide="save"></i> Save
+                            Changes</button>
+                    </div>
+                </div>
+            </div>
+
+            <section id="settings" class="tab-pane">
+                <div style="padding: 1rem;">
+                    <h2>Settings</h2>
+                </div>
+                <div class="settings-grid">
+                    <div class="card settings-card">
+                        <h3>Retailers</h3>
+                        <div class="input-with-btn">
+                            <input type="text" id="newRetailer" placeholder="New Retailer">
+                            <button id="addRetailerBtn" class="btn-icon"><i data-lucide="plus"></i></button>
+                        </div>
+                        <div class="list-container">
+                            <ul id="retailerList" class="settings-list"></ul>
+                        </div>
+                    </div>
+                    <div class="card settings-card">
+                        <h3>Locations</h3>
+                        <div class="input-with-btn">
+                            <input type="text" id="newLocation" placeholder="New Location">
+                            <button id="addLocationBtn" class="btn-icon"><i data-lucide="plus"></i></button>
+                        </div>
+                        <div class="list-container">
+                            <ul id="locationList" class="settings-list"></ul>
+                        </div>
+                    </div>
+                    <div class="card settings-card">
+                        <h3>Departments</h3>
+                        <div class="input-with-btn">
+                            <input type="text" id="newDept" placeholder="New Department">
+                            <button id="addDeptBtn" class="btn-icon"><i data-lucide="plus"></i></button>
+                        </div>
+                        <div class="list-container">
+                            <ul id="deptList" class="settings-list"></ul>
+                        </div>
+                    </div>
+                    <div class="card settings-card">
+                        <h3>Designations</h3>
+                        <div class="input-with-btn">
+                            <input type="text" id="newDesig" placeholder="New Designation">
+                            <button id="addDesigBtn" class="btn-icon"><i data-lucide="plus"></i></button>
+                        </div>
+                        <div class="list-container">
+                            <ul id="desigList" class="settings-list"></ul>
+                        </div>
+                    </div>
+
+                    <!-- Security Settings -->
+                    <div class="card settings-card" style="grid-column: 1 / -1;">
+                        <h3><i data-lucide="shield" style="width: 18px; height: 18px; margin-right: 6px;"></i> Security
+                        </h3>
+                        <div style="display: flex; flex-direction: column; gap: 1rem;">
+                            <div
+                                style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: var(--bg-surface); border-radius: 8px;">
+                                <div>
+                                    <strong style="display: block; margin-bottom: 4px;">PIN Lock</strong>
+                                    <span style="font-size: 0.85rem; color: var(--text-muted);">Require 4-digit PIN to
+                                        access app</span>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="pinLockToggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div id="pinSetupSection"
+                                style="display: none; padding: 0.75rem; background: var(--bg-surface); border-radius: 8px;">
+                                <div style="margin-bottom: 0.75rem;">
+                                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Set New
+                                        PIN</label>
+                                    <input type="password" id="pinSetupInput" maxlength="4" placeholder="••••"
+                                        inputmode="numeric" pattern="[0-9]*" autocomplete="new-password"
+                                        style="width: 120px; padding: 0.5rem; text-align: center; letter-spacing: 0.3em; font-size: 1.1rem; border: 2px solid var(--border); border-radius: 8px; background: var(--bg-body);">
+                                </div>
+                                <button id="savePinBtn"
+                                    style="padding: 0.5rem 1rem; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+                                    <i data-lucide="check" style="width: 16px; height: 16px;"></i> Save PIN
+                                </button>
+                                <button id="clearPinBtn"
+                                    style="padding: 0.5rem 1rem; margin-left: 0.5rem; background: transparent; color: #ef4444; border: 1px solid #ef4444; border-radius: 8px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+                                    <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i> Clear PIN
+                                </button>
+                            </div>
+                            <div style="padding: 0.75rem; background: var(--bg-surface); border-radius: 8px;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <i data-lucide="clock"
+                                        style="width: 16px; height: 16px; color: var(--text-muted);"></i>
+                                    <span style="font-size: 0.9rem; color: var(--text-muted);">Auto-logout: <strong>15
+                                            minutes</strong> of inactivity</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
+                </div>
+
+
+            </section>
+
+            <section id="about" class="tab-pane">
+                <div class="card about-card">
+                    <div class="about-header">
+                        <div class="logo-container"><i data-lucide="smartphone" class="app-logo-large"></i></div>
+                        <h2>Employee Attendance</h2><span class="version-badge">v3.0.97</span>
+                    </div>
+                    <div class="about-body">
+                        <p class="about-description">Professional daily staff attendance tracking and reporting.</p>
+                        <div class="about-info-list">
+                            <div class="info-item">
+                                <span class="icon-box"><i data-lucide="code-2"
+                                        style="color: white; stroke: white;"></i></span>
+                                <div class="info-text"><label>Developer</label><span>Subeesh</span></div>
+                            </div>
+                            <div class="info-item">
+                                <span class="icon-box"><i data-lucide="mail"
+                                        style="color: white; stroke: white;"></i></span>
+                                <div class="info-text"><label>Contact</label><a href="mailto:subeesh90@gmail.com"
+                                        class="link-text">subeesh90@gmail.com</a></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="about-footer">
+                        <p class="copyright">© 2026 Subeesh Apps. All rights reserved.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="picker-modal" class="picker-overlay hidden">
+        <div class="picker-card">
+            <div class="picker-header">
+                <h3 id="picker-title">Select Item</h3>
+                <button id="closePickerBtn" class="btn-icon-sm"><i data-lucide="x"></i></button>
+            </div>
+            <div class="picker-wrapper">
+                <div class="picker-highlight"></div>
+                <div id="picker-body" class="picker-body"></div>
+            </div>
+            <div class="picker-footer">
+                <button id="pickerConfirmBtn" class="btn btn-primary"><i data-lucide="check"></i> Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="message-modal" class="message-overlay hidden">
+        <div class="message-card">
+            <div class="message-icon" id="message-icon"><i data-lucide="info"></i></div>
+            <h3 id="message-title">Message</h3>
+            <p id="message-text">This is a message.</p>
+            <div class="message-buttons" id="message-buttons">
+                <button class="btn btn-primary" id="message-ok-btn">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="confirm-modal" class="message-overlay hidden">
+        <div class="message-card">
+            <div class="message-icon warning"><i data-lucide="alert-triangle"></i></div>
+            <h3 id="confirm-title">Confirm Action</h3>
+            <p id="confirm-text">Are you sure?</p>
+            <div class="message-buttons">
+                <button class="btn btn-secondary" id="confirm-no-btn">No, Cancel</button>
+                <button class="btn btn-primary" id="confirm-yes-btn" style="background: #ef4444; color: white;">Yes,
+                    Proceed</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Floating PIN Modal -->
+    <div id="settings-pin-modal" class="message-overlay hidden" style="z-index: 10000;">
+        <div class="message-card">
+            <div class="message-icon warning"><i data-lucide="lock"></i></div>
+            <h3 id="settings-pin-title">Enter PIN</h3>
+            <p id="settings-pin-text" style="color: var(--text-muted); text-align: center; margin-bottom: 1rem;">Please
+                enter your PIN to continue.</p>
+
+            <div style="margin: 1rem 0; display: flex; flex-direction: column; align-items: center;">
+                <input type="password" id="settingsPinInput" maxlength="4" placeholder="••••" inputmode="numeric"
+                    pattern="[0-9]*" autocomplete="new-password" spellcheck="false"
+                    style="width: 160px; padding: 0.75rem; text-align: center; letter-spacing: 0.5em; font-size: 1.5rem; border: 2px solid var(--border); border-radius: 8px; background: var(--bg-surface); color: var(--text-body); outline: none;">
+                <p id="settingsPinError"
+                    style="color: #ef4444; font-size: 0.85rem; margin-top: 0.5rem; text-align: center; min-height: 1.25rem;">
+                </p>
+            </div>
+
+            <div class="message-buttons">
+                <button class="btn btn-ghost" id="settings-pin-cancel"
+                    style="border: 1px solid var(--border);">Cancel</button>
+                <button class="btn btn-primary" id="settings-pin-confirm">Confirm</button>
+            </div>
+        </div>
+    </div>
+    <!-- PIN Entry Modal (Startup) -->
+    <div id="pinModal" class="picker-overlay hidden"
+        style="z-index: 9999; background: var(--bg-body); position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;">
+        <style>
+            .pin-icon {
+                width: 48px;
+                height: 48px;
+                color: var(--primary);
+                /* No transition */
+            }
+
+            .pin-title {
+                margin-top: 1rem;
+                color: var(--text-body);
+                font-size: 1.5rem;
+                /* No transition */
+            }
+
+            .pin-sub {
+                color: var(--text-muted);
+                font-size: 0.9rem;
+                /* No transition */
+            }
+
+            /* Mobile Keyboard Open State (Small Height) */
+            @media (max-height: 500px) {
+                .pin-icon {
+                    width: 32px;
+                    height: 32px;
+                    margin-bottom: 0.5rem;
+                }
+
+                .pin-title {
+                    font-size: 1.2rem;
+                    margin-top: 0.5rem;
+                    margin-bottom: 0.25rem;
+                }
+
+                .pin-sub {
+                    display: none;
+                }
+
+                /* Hide subtitle to save space */
+                .message-card {
+                    padding: 1rem !important;
+                    margin-top: -20px;
+                }
+            }
+        </style>
+        <div class="message-card" style="box-shadow: none; background: transparent; width: 100%; max-width: 320px;">
+            <div style="margin-bottom: 2rem; text-align: center;">
+                <!-- Inline SVG to prevent re-render flash -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    class="pin-icon">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                <h2 class="pin-title">Security Check</h2>
+                <p class="pin-sub">Enter your PIN to decrypt data</p>
+            </div>
+
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 1rem;">
+                <input type="password" id="pinEntryInput" maxlength="4" placeholder="••••" inputmode="numeric"
+                    pattern="[0-9]*" autocomplete="new-password" spellcheck="false"
+                    style="width: 160px; padding: 0.75rem; text-align: center; letter-spacing: 0.5em; font-size: 1.5rem; border: 2px solid var(--border); border-radius: 12px; background: var(--bg-surface); color: var(--text-body); outline: none; -webkit-tap-highlight-color: transparent;">
+
+                <button id="pinSubmitBtn" class="btn btn-primary"
+                    style="width: 160px; justify-content: center; padding: 0.75rem;">
+                    Unlock <i data-lucide="arrow-right" style="width:16px; margin-left:8px;"></i>
+                </button>
+            </div>
+            <p id="pinErrorMsg"
+                style="color: #ef4444; font-size: 0.85rem; margin-top: 1rem; min-height: 1.25rem; text-align: center;">
+            </p>
+        </div>
+    </div>
+
+    <!-- Backup & Delete Confirmation Modal (Tri-State) -->
+    <div id="backup-delete-modal" class="message-overlay hidden">
+        <div class="message-card">
+            <div class="message-icon warning" style="color:#f59e0b; background: #fffbeb;"><i
+                    data-lucide="alert-triangle"></i></div>
+            <h3>Delete All Data?</h3>
+            <p style="color: var(--text-body); margin-bottom: 1rem;">This will permanently DELETE all your saved
+                attendance records. Do you want to download a backup first?</p>
+            <div class="action-buttons-vertical"
+                style="display: flex; flex-direction: column; gap: 0.75rem; width: 100%;">
+                <button id="bd-backup-delete" class="btn btn-primary"
+                    style="width: 100%; justify-content: center; background: #10b981; border-color: #10b981;"><i
+                        data-lucide="download" style="width:16px; margin-right:4px;"></i> Yes, Backup & Delete</button>
+                <button id="bd-delete-only" class="btn"
+                    style="width: 100%; justify-content: center; background: #ef4444; color: white; border: none; padding: 0.6rem;"><i
+                        data-lucide="trash-2" style="width:16px; margin-right:4px;"></i> No, Delete Without
+                    Backup</button>
+                <button id="bd-cancel" class="btn btn-ghost"
+                    style="width: 100%; justify-content: center; border: 1px solid var(--border);">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+
+
+    <script src="app.js"></script>
+    <script>
+        if (window.lucide) lucide.createIcons();
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(console.error);
+    </script>
+</body>
+
+</html>

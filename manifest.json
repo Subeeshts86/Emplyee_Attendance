@@ -1,0 +1,16 @@
+{
+  "name": "Employee Attendance",
+  "short_name": "Attendance",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1d4ed8",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "Attendance.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
