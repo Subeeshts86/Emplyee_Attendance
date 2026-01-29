@@ -1,10 +1,11 @@
-const CACHE_NAME = 'attendance-app-v61';
+// --- UPDATED sw.js ---
+const CACHE_NAME = 'attendance-app-v64'; // Incremented version
 const ASSETS = [
     './',
     './index.html',
     './style.css',
     './calendar_style.css',
-    './app.js',
+    './app.js?v=64', // <--- IMPORTANT: Added version query to force update
     './manifest.json',
     './Attendance.png',
     'https://unpkg.com/lucide@0.469.0',
@@ -13,7 +14,7 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-    self.skipWaiting(); // Force new SW to take over immediately
+    self.skipWaiting();
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then((cache) => cache.addAll(ASSETS))
@@ -28,16 +29,14 @@ self.addEventListener('activate', (event) => {
                     .map((key) => caches.delete(key))
             );
         })
-            .then(() => self.clients.claim()) // Become available to all pages
+            .then(() => self.clients.claim())
     );
 });
 
-
 self.addEventListener('fetch', (event) => {
     event.respondWith(
-        caches.match(event.request)
-            .then((response) => {
-                return response || fetch(event.request);
-            })
+        caches.match(event.request).then((response) => {
+            return response || fetch(event.request);
+        })
     );
 });

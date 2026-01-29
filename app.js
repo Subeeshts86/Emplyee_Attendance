@@ -68,31 +68,32 @@ function loadState(pin = null) {
     }
 }
 
-// Secured saveState to prevent plaintext fallback
-let saveTimeout;
+// FIX: Removed setTimeout to prevent data loss on immediate refresh
 function saveState() {
-    clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(() => {
-        if (!appState) return;
-        try {
-            let dataToSave;
-            if (isPinEnabled()) {
-                if (!sessionPin) {
-                    console.error("Security Block: Session PIN missing. Save aborted.");
-                    return;
-                }
-                // Encrypt
-                dataToSave = CryptoJS.AES.encrypt(JSON.stringify(appState), sessionPin).toString();
-            } else {
-                // Plain Text
-                dataToSave = JSON.stringify(appState);
+    if (!appState) return;
+    try {
+        let dataToSave;
+        if (isPinEnabled()) {
+            if (!sessionPin) {
+                console.error("Security Block: Session PIN missing. Save aborted.");
+                return;
             }
-            localStorage.setItem(STORE_KEY, dataToSave);
-            updateStorageMonitor();
-        } catch (e) {
-            console.error("Save failed", e);
+            // Encrypt
+            dataToSave = CryptoJS.AES.encrypt(JSON.stringify(appState), sessionPin).toString();
+        } else {
+            // Plain Text
+            dataToSave = JSON.stringify(appState);
         }
-    }, 300);
+        localStorage.setItem(STORE_KEY, dataToSave);
+        console.log("Data saved successfully at " + new Date().toLocaleTimeString()); // Debug Confirmation
+        updateStorageMonitor();
+    } catch (e) {
+        console.error("Save failed", e);
+        // Optional: Alert user if storage is full
+        if (e.name === 'QuotaExceededError') {
+            alert("Storage full! Your latest changes could not be saved.");
+        }
+    }
 }
 
 // --- Security: Activity Tracking for Auto-Logout ---
@@ -1651,3 +1652,72 @@ function initPinSettings() {
         });
     }
 }
+// --- PASTE THIS AT THE VERY BOTTOM OF app.js ---
+
+function initApp() {
+    // 1. Load Settings or use Defaults
+    if (!appState) appState = JSON.parse(JSON.stringify(defaultState));
+
+    // 2. Ensure all settings arrays exist
+    ['retailers', 'locations', 'departments', 'designations'].forEach(key => {
+        if (!appState.settings[key] || !Array.isArray(appState.settings[key])) {
+            appState.settings[key] = defaultState.settings[key];
+        }
+    });
+
+    // 3. Initialize UI
+    document.querySelector('.app-container').style.display = 'block';
+    initTheme();
+    updateAllDropdowns();
+    renderAttendanceGrid();
+    refreshIcons();
+    initPinSettings();
+    initCalendar();
+    setupEventListeners();
+    renderDataTab();
+
+    window.appInitialized = true;
+    console.log("App Initialized Successfully");
+}
+
+// --- Startup Logic ---
+document.addEventListener('DOMContentLoaded', () => {
+    initTheme();
+    const raw = localStorage.getItem(STORE_KEY);
+    const pinEnabled = isPinEnabled();
+    const hasData = !!raw;
+
+    console.log("App Loading... Version 64 Check");
+
+    // Case 1: Encrypted Data OR PIN Enabled -> Show PIN Screen
+    if ((hasData && isEncrypted(raw)) || (pinEnabled && getStoredPinHash())) {
+        document.getElementById('pinModal').classList.remove('hidden');
+
+        // Setup PIN Entry logic
+        const input = document.getElementById('pinEntryInput');
+        const submitBtn = document.getElementById('pinSubmitBtn');
+        const errMsg = document.getElementById('pinErrorMsg');
+
+        const attemptLogin = () => {
+            if (verifyPin(input.value)) {
+                sessionPin = input.value;
+                document.getElementById('pinModal').classList.add('hidden');
+                loadState(input.value); // Load with PIN
+                initApp();
+            } else {
+                errMsg.textContent = 'Incorrect PIN';
+            }
+        };
+
+        submitBtn.onclick = attemptLogin;
+        input.onkeydown = (e) => { if (e.key === 'Enter') attemptLogin(); };
+
+        // Focus input
+        setTimeout(() => input.focus(), 200);
+
+    } else {
+        // Case 2: No PIN / Plain Text -> Load immediately
+        loadState(null);
+        initApp();
+    }
+});
