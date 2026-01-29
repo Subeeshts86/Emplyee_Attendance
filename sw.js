@@ -1,11 +1,13 @@
-// --- UPDATED sw.js ---
-const CACHE_NAME = 'attendance-app-v64'; // Incremented version
+// Open sw.js and change the top line:
+const CACHE_NAME = 'attendance-app-v65'; // <--- Increment this number (e.g., 64 -> 65)
+
+// Keep the rest of the file exactly the same
 const ASSETS = [
     './',
     './index.html',
     './style.css',
     './calendar_style.css',
-    './app.js?v=64', // <--- IMPORTANT: Added version query to force update
+    './app.js?v=65', // <--- Update this query parameter too
     './manifest.json',
     './Attendance.png',
     'https://unpkg.com/lucide@0.469.0',
@@ -39,4 +41,5 @@ self.addEventListener('fetch', (event) => {
             return response || fetch(event.request);
         })
     );
+
 });
