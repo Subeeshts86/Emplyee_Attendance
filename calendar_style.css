@@ -131,4 +131,32 @@
 
 .dot.sick-leave {
     background-color: #f59e0b;
+
+}
+
+/* Mobile Fixes for Calendar Dots */
+@media (max-width: 480px) {
+    .calendar-day {
+        min-height: 45px; /* Ensure box is tall enough */
+        justify-content: flex-start;
+        padding-top: 4px;
+    }
+
+    .day-info {
+        font-size: 0.8rem;
+        margin-bottom: 2px;
+    }
+
+    /* Force the dot to be visible */
+    .day-status {
+        width: 6px;
+        height: 6px;
+        margin-top: 2px;
+        z-index: 10;
+    }
+    
+    /* Adjust grid gap for small screens */
+    .calendar-grid-body {
+        gap: 4px;
+    }
 }
