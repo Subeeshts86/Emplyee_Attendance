@@ -1,13 +1,11 @@
-// Open sw.js and change the top line:
-const CACHE_NAME = 'attendance-app-v65'; // <--- Increment this number (e.g., 64 -> 65)
-
-// Keep the rest of the file exactly the same
+// --- UPDATED sw.js ---
+const CACHE_NAME = 'attendance-app-v67'; // <--- Update to v67
 const ASSETS = [
     './',
     './index.html',
-    './style.css',
-    './calendar_style.css',
-    './app.js?v=65', // <--- Update this query parameter too
+    './style.css?v=67',           // <--- Add version tag
+    './calendar_style.css?v=67',  // <--- Add version tag
+    './app.js?v=67',              // <--- Update version tag
     './manifest.json',
     './Attendance.png',
     'https://unpkg.com/lucide@0.469.0',
@@ -41,5 +39,4 @@ self.addEventListener('fetch', (event) => {
             return response || fetch(event.request);
         })
     );
-
 });

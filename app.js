@@ -660,6 +660,7 @@ function updateOnlineStatus() {
     }
 }
 
+// FIX: Updated updateStats to trim spaces (Fixes Mobile Bug)
 function updateStats(targetMonth, targetYear) {
     try {
         if (targetMonth === undefined || targetYear === undefined) {
@@ -685,12 +686,14 @@ function updateStats(targetMonth, targetYear) {
 
         if (!appState.savedSheets || appState.savedSheets.length === 0) return;
 
+        // FIX: Trim Input
         const empName = document.getElementById('empName')?.value?.trim();
 
         const relevantSheets = appState.savedSheets.filter(s =>
             s.month == targetMonth &&
             s.year == targetYear &&
-            (!empName || (s.empName && s.empName.toLowerCase() === empName.toLowerCase()))
+            // FIX: Trim Saved Data
+            (!empName || (s.empName && s.empName.trim().toLowerCase() === empName.toLowerCase()))
         );
 
         if (relevantSheets.length === 0) return;
@@ -736,15 +739,17 @@ function updateStats(targetMonth, targetYear) {
     } catch (error) { }
 }
 
-// --- Validation ---
+// FIX: Updated validateRequiredFields to trim Name on Save
 function validateRequiredFields() {
-    // FIX: Force Sync UI -> State before validating to solve "Value exists but error shown"
     ['empName', 'civilId'].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
             let val = el.value;
-            // Clean civilId specifically to match storage format
             if (id === 'civilId') val = val.replace(/\D/g, '').slice(0, 12);
+
+            // FIX: Trim Name specifically
+            if (id === 'empName') val = val.trim();
+
             appState.currentSheet[id] = val;
         }
     });
@@ -1463,7 +1468,10 @@ function renderCalendar() {
     const month = currentCalendarDate.getMonth();
     title.textContent = `${MONTH_NAMES[month]} ${year}`;
     updateStats(month, year);
+
+    // FIX: Pass trim-corrected data
     const monthData = getMonthData(month, year);
+
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const today = new Date();
@@ -1481,13 +1489,23 @@ function renderCalendar() {
     }
 }
 
+// --- FIX: Trim logic added to getMonthData ---
 function getMonthData(month, year) {
     const data = {};
-    const empName = document.getElementById('empName')?.value?.trim();
+    const empName = document.getElementById('empName')?.value?.trim(); // Trim input
     const daysInMonth = new Date(year, month + 1, 0).getDate();
+
     if (!appState.savedSheets || !Array.isArray(appState.savedSheets)) return data;
-    const relevantSheets = appState.savedSheets.filter(s => s.month == month && s.year == year && (!empName || (s.empName && s.empName.toLowerCase() === empName.toLowerCase())));
+
+    const relevantSheets = appState.savedSheets.filter(s =>
+        s.month == month &&
+        s.year == year &&
+        // Trim saved name before comparing
+        (!empName || (s.empName && s.empName.trim().toLowerCase() === empName.toLowerCase()))
+    );
+
     if (relevantSheets.length === 0) return data;
+
     const mergedData = {};
     [...relevantSheets].reverse().forEach(sheet => {
         if (!sheet.attendance) return;
@@ -1652,7 +1670,8 @@ function initPinSettings() {
         });
     }
 }
-// --- PASTE THIS AT THE VERY BOTTOM OF app.js ---
+
+// --- Init Section (Previously Missing) ---
 
 function initApp() {
     // 1. Load Settings or use Defaults
