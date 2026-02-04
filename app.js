@@ -1227,11 +1227,10 @@ function generatePDF(action = 'save', optionalData = null) {
                 navigator.share({ files: [file] })
                     .then(() => { showMessage('Success', 'PDF Shared!', 'success'); })
                     .catch((e) => {
-                        console.error("Share failed:", e); // Log for debugging
-                        if (e.name !== 'AbortError') {
-                            doc.save(fname);
-                            showMessage('Saved', 'Browser blocked sharing. File Downloaded.', 'success');
-                        }
+                        console.error("Share failed:", e);
+                        // Fallback to download on ANY error (including AbortError/User Cancel/Browser Block)
+                        doc.save(fname);
+                        showMessage('Saved', 'Sharing failed or cancelled. File Downloaded.', 'success');
                     });
             } else {
                 doc.save(fname);
