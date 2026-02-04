@@ -523,14 +523,87 @@ function renderAttendanceGrid() {
     refreshIcons();
 }
 
+// --- Time Calculation Logic ---
+function calculateLogoutTime(dateKey, inH, inM, inAp) {
+    if (!inH || !inM || !inAp) return null;
+
+    let h = parseInt(inH);
+    if (inAp === 'PM' && h !== 12) h += 12;
+    if (inAp === 'AM' && h === 12) h = 0;
+
+    let totalMin = (h * 60) + parseInt(inM);
+
+    // Ramadan Check
+    const parts = dateKey.split('-');
+    const dateObj = new Date(parts[0], parseInt(parts[1]) - 1, parts[2]);
+    const shiftHours = isRamadan(dateObj) ? 6 : 9;
+
+    totalMin += (shiftHours * 60);
+
+    // Wrap around 24h (though unlikely for 9h shift starting morning)
+    if (totalMin >= 1440) totalMin -= 1440;
+
+    let outH = Math.floor(totalMin / 60);
+    let outM = totalMin % 60;
+    let outAp = 'AM';
+
+    if (outH >= 12) {
+        outAp = 'PM';
+        if (outH > 12) outH -= 12;
+    }
+    if (outH === 0) outH = 12;
+
+    return {
+        outHour: String(outH).padStart(2, '0'),
+        outMin: String(outM).padStart(2, '0'),
+        outAmPm: outAp
+    };
+}
+
+function validateTimeLogic(dateKey, d) {
+    if (!d.inHour || !d.outHour) return;
+
+    const to24 = (h, m, ap) => {
+        let hr = parseInt(h);
+        if (ap === 'PM' && hr !== 12) hr += 12;
+        if (ap === 'AM' && hr === 12) hr = 0;
+        return (hr * 60) + parseInt(m);
+    };
+
+    const inTime = to24(d.inHour, d.inMin, d.inAmPm);
+    const outTime = to24(d.outHour, d.outMin, d.outAmPm);
+
+    if (outTime <= inTime) {
+        // Allow midnight crossing? "must be a +time" usually implies same day unless night shift.
+        // Assuming standard shift for now.
+        showMessage('Time Error', 'Logout time must be AFTER Login time.', 'warning');
+    }
+}
+
 function updateAttendance(key, field, val) {
     if (!appState.currentSheet.attendance[key]) {
         appState.currentSheet.attendance[key] = { inHour: '01', inMin: '00', inAmPm: 'PM', outHour: '10', outMin: '00', outAmPm: 'PM', remarks: '' };
     }
     appState.currentSheet.attendance[key][field] = val;
 
+    const d = appState.currentSheet.attendance[key];
+
+    // Logic 1: Auto-Calculate Logout if Login changes
+    if (field === 'inHour' || field === 'inMin' || field === 'inAmPm') {
+        const newOut = calculateLogoutTime(key, d.inHour, d.inMin, d.inAmPm);
+        if (newOut) {
+            d.outHour = newOut.outHour;
+            d.outMin = newOut.outMin;
+            d.outAmPm = newOut.outAmPm;
+        }
+    }
+
+    // Logic 2: Validate if Logout changes (Manual Edit)
+    if (field === 'outHour' || field === 'outMin' || field === 'outAmPm') {
+        validateTimeLogic(key, d);
+    }
+
     if (field === 'remarks') {
-        const d = appState.currentSheet.attendance[key];
         if (val) {
             d.inHour = ''; d.inMin = ''; d.inAmPm = '';
             d.outHour = ''; d.outMin = ''; d.outAmPm = '';
@@ -782,8 +855,8 @@ function validateRequiredFields() {
     Object.keys(s.attendance || {}).forEach(dateKey => {
         const att = s.attendance[dateKey];
         if (att.inHour && att.outHour && !att.remarks) {
-            const inTime = convertTo24Hour(att.inHour, att.inAmPm);
-            const outTime = convertTo24Hour(att.outHour, att.outAmPm);
+            const inTime = convertTo24Hour(att.inHour, att.inMin, att.inAmPm);
+            const outTime = convertTo24Hour(att.outHour, att.outMin, att.outAmPm);
 
             if (outTime < inTime && outTime > 6) {
                 const day = dateKey.split('-')[2];
@@ -792,8 +865,16 @@ function validateRequiredFields() {
         }
     });
 
-    if (timeErrors.length > 0 && timeErrors.length <= 3) warnings.push(...timeErrors);
-    else if (timeErrors.length > 3) warnings.push(`${timeErrors.length} days have time issues`);
+    if (timeErrors.length > 0) {
+        let msg = '<ul style="text-align: left; margin-top: 0.5rem; padding-left: 1.5rem; color: #ef4444;">';
+        // Show first 5 errors max to avoid huge modal
+        timeErrors.slice(0, 5).forEach(err => msg += `<li>${err}</li>`);
+        if (timeErrors.length > 5) msg += `<li>...and ${timeErrors.length - 5} more</li>`;
+        msg += '</ul>';
+
+        showMessage('Validation Error', `<b>Cannot proceed with invalid times:</b><br>${msg}`, 'error', true);
+        return false;
+    }
 
     if (missing.length > 0) {
         let msg = '<ul style="text-align: left; margin-top: 0.5rem; padding-left: 1.5rem;">';
@@ -813,11 +894,11 @@ function validateRequiredFields() {
     return true;
 }
 
-function convertTo24Hour(hour, ampm) {
+function convertTo24Hour(hour, min, ampm) {
     let h = parseInt(hour);
     if (ampm === 'PM' && h !== 12) h += 12;
     if (ampm === 'AM' && h === 12) h = 0;
-    return h;
+    return (h * 60) + parseInt(min || '0');
 }
 
 // --- Data Backup & Restore ---
@@ -995,7 +1076,7 @@ function generatePDF(action = 'save', optionalData = null) {
         const doc = new jsPDF({ format: 'a4', unit: 'pt' });
         const days = getDaysInMonth(s.year, s.month);
 
-        doc.setFillColor(220, 230, 241);
+        doc.setFillColor(240, 240, 240);
         doc.rect(40, 55, 515, 30, 'F');
         doc.setFont("helvetica", "bold");
         doc.setFontSize(14);
@@ -1043,7 +1124,7 @@ function generatePDF(action = 'save', optionalData = null) {
             head: [['Date', 'Day', 'Login Time', 'Logout Time', 'Remarks']],
             body: tableBody,
             theme: 'grid',
-            styles: { font: 'helvetica', fontSize: 9.5, cellPadding: 1.6, lineColor: [200, 200, 200], lineWidth: 0.5, textColor: 0, valign: 'middle' },
+            styles: { font: 'helvetica', fontSize: 9.5, cellPadding: 1.6, lineColor: [60, 60, 60], lineWidth: 0.5, textColor: 0, valign: 'middle' },
             headStyles: { fillColor: [64, 64, 64], textColor: 255, fontStyle: 'bold', lineColor: 255, lineWidth: 0.5, halign: 'center', minCellHeight: 25, valign: 'middle' },
             columnStyles: { 0: { cellWidth: 103, halign: 'left' }, 1: { cellWidth: 103, halign: 'left' }, 2: { cellWidth: 103, halign: 'left' }, 3: { cellWidth: 103, halign: 'left' }, 4: { cellWidth: 103, halign: 'left' } },
             margin: { left: 40, right: 40 },
@@ -1076,13 +1157,13 @@ function generatePDF(action = 'save', optionalData = null) {
             const file = new File([blob], fname, { type: 'application/pdf' });
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
                 navigator.share({ files: [file], title: 'Monthly Timesheet', text: `Timesheet for ${MONTH_NAMES[s.month]} ${s.year}.` })
-                    .then(() => { if (!isDirect) showMessage('Success', 'PDF Shared!', 'success'); })
+                    .then(() => { showMessage('Success', 'PDF Shared!', 'success'); })
                     .catch((e) => {
-                        if (e.name !== 'AbortError') { doc.save(fname); if (!isDirect) showMessage('Saved', 'Downloaded (Share failed).', 'success'); }
+                        if (e.name !== 'AbortError') { doc.save(fname); showMessage('Saved', 'Downloaded (Share failed).', 'success'); }
                     });
             } else {
                 doc.save(fname);
-                if (!isDirect) showMessage('Success', 'PDF Downloaded!', 'success');
+                showMessage('Success', 'PDF Downloaded!', 'success');
             }
         }
     } catch (e) {
@@ -1251,7 +1332,7 @@ function renderDataTab() {
             </div>
             <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
                 <button class="btn btn-secondary" onclick="openDataPreview('${item.id}')" style="flex: 1; font-size: 0.9rem; padding: 0.5rem;"><i data-lucide="eye"></i> View</button>
-                <button class="btn btn-primary" onclick="downloadSaved('${item.id}')" style="flex: 1; font-size: 0.9rem; padding: 0.5rem;"><i data-lucide="download"></i> Download</button>
+                <button class="btn btn-primary" onclick="downloadSaved('${item.id}')" style="flex: 1; font-size: 0.9rem; padding: 0.5rem;"><i data-lucide="share-2"></i> Share / PDF</button>
             </div>
         `;
         container.appendChild(div);
@@ -1573,27 +1654,7 @@ function showPinModal() {
     if (modal) { modal.classList.remove('hidden'); initPinEntry(); }
 }
 
-function initApp() {
-    if (!appState) appState = JSON.parse(JSON.stringify(defaultState));
-    if (!appState.settings) appState.settings = JSON.parse(JSON.stringify(defaultState.settings));
-    ['retailers', 'locations', 'departments', 'designations'].forEach(key => {
-        if (!appState.settings[key] || !Array.isArray(appState.settings[key])) { appState.settings[key] = defaultState.settings[key]; }
-    });
-    document.querySelector('.app-container').style.display = 'block';
-    initTheme(); updateAllDropdowns(); renderAttendanceGrid(); refreshIcons(); initPinSettings(); initCalendar(); setupEventListeners();
-    window.appInitialized = true;
-    if (sessionPin && !isEncrypted(localStorage.getItem(STORE_KEY))) { saveState(); }
-}
 
-document.addEventListener('DOMContentLoaded', () => {
-    initTheme();
-    const appContainer = document.querySelector('.app-container');
-    if (appContainer) appContainer.style.display = 'none';
-    const raw = localStorage.getItem(STORE_KEY);
-    const encrypted = isEncrypted(raw);
-    const pinEnabled = isPinEnabled();
-    if (encrypted || (pinEnabled && getStoredPinHash())) { showPinModal(); } else { loadState(null); initApp(); }
-});
 
 function initPinSettings() {
     if (window.pinSettingsInitialized) return;
