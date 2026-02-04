@@ -39,12 +39,14 @@ const TRANSLATIONS = {
     en: {
         empName: "Employee Name", civilId: "Civil ID No.", retailer: "Retailer", location: "Location",
         department: "Department", designation: "Designation", month: "Month", year: "Year",
-        day: "Day", login: "Login", logout: "Logout", remarks: "Remarks"
+        day: "Day", login: "Login", logout: "Logout", remarks: "Remarks",
+        namePlaceholder: "Enter Name", idPlaceholder: "Enter The No."
     },
     ar: {
         empName: "اسم الموظف", civilId: "الرقم المدني", retailer: "بائع التجزئة", location: "الموقع",
         department: "القسم", designation: "المسمى الوظيفي", month: "الشهر", year: "السنة",
-        day: "اليوم", login: "دخول", logout: "خروج", remarks: "ملاحظات"
+        day: "اليوم", login: "دخول", logout: "خروج", remarks: "ملاحظات",
+        namePlaceholder: "أدخل الاسم بالإنجليزية فقط", idPlaceholder: "أدخل الرقم"
     }
 };
 
@@ -56,6 +58,13 @@ function updateLanguage() {
         const key = el.getAttribute('data-i18n');
         if (t[key]) el.textContent = t[key];
     });
+
+    // Update Input Placeholders
+    const nameInp = document.getElementById('empName');
+    if (nameInp) nameInp.placeholder = t.namePlaceholder;
+
+    const idInp = document.getElementById('civilId');
+    if (idInp) idInp.placeholder = t.idPlaceholder;
 
     const langBtn = document.getElementById('langToggle');
     if (langBtn) langBtn.textContent = currentLang === 'en' ? 'ع' : 'EN';

@@ -537,8 +537,10 @@ input[type="text"] {
 .action-bar {
     position: fixed;
     bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    /* transform: translateX(-50%); Removed for RTL */
     width: 100%;
     max-width: 600px;
     padding: 1rem 1rem 6rem 1rem;
@@ -592,8 +594,10 @@ input[type="text"] {
 .tab-nav {
     position: fixed;
     bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    /* transform: translateX(-50%); Removed for RTL safety */
     width: calc(100% - 2rem);
     max-width: 580px;
     background: var(--glass-bg);
