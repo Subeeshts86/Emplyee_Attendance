@@ -1,3 +1,21 @@
+// --- Safe Storage Wrapper (Must be first) ---
+const safeStorage = {
+    getItem: (key) => {
+        try { return localStorage.getItem(key); }
+        catch (e) { console.warn('Storage Access Blocked', e); return null; }
+    },
+    setItem: (key, val) => {
+        try { localStorage.setItem(key, val); }
+        catch (e) {
+            console.error('Storage Write Failed', e);
+            if (e.name === 'QuotaExceededError') alert('Storage Full! Data could not be saved.');
+        }
+    },
+    removeItem: (key) => {
+        try { localStorage.removeItem(key); } catch (e) { }
+    }
+};
+
 // --- Store Management ---
 const STORE_KEY = 'attendance_app_v2';
 
@@ -49,23 +67,7 @@ function updateLanguage() {
 let appState;
 let sessionPin = null; // Stores key in memory only
 
-// Safe Storage Wrapper for Privacy Modes/Strict Browsers
-const safeStorage = {
-    getItem: (key) => {
-        try { return localStorage.getItem(key); }
-        catch (e) { console.warn('Storage Access Blocked', e); return null; }
-    },
-    setItem: (key, val) => {
-        try { localStorage.setItem(key, val); }
-        catch (e) {
-            console.error('Storage Write Failed', e);
-            if (e.name === 'QuotaExceededError') alert('Storage Full! Data could not be saved.');
-        }
-    },
-    removeItem: (key) => {
-        try { localStorage.removeItem(key); } catch (e) { }
-    }
-};
+
 
 // --- State Management : Load/Save with Encryption ---
 function loadState(pin = null) {
@@ -719,7 +721,12 @@ function setupAddSetting(btnId, inpId, key) {
 
     const add = () => {
         const val = inp.value.trim();
-        if (!val) return inp.focus();
+        if (!val) {
+            const map = { retailers: 'Retailer', locations: 'Location', departments: 'Department', designations: 'Designation' };
+            const label = map[key] || 'value';
+            showMessage('Start typing...', `Please enter a ${label} to add.`, 'warning');
+            return inp.focus();
+        }
         let clean;
         if (key === 'designations' && val.length <= 3) {
             clean = val.toUpperCase();
@@ -1772,8 +1779,7 @@ function initPinSettings() {
         clearPinBtn.addEventListener('click', function () {
             showConfirm('Clear PIN Lock?', 'Are you sure you want to remove your PIN lock?', () => {
                 showSettingsPinModal(() => {
-                    localStorage.removeItem('app_pin_hash'); localStorage.removeItem('app_pin_enabled'); sessionPin = null;
-                    try { localStorage.setItem(STORE_KEY, JSON.stringify(appState)); updateStorageMonitor(); } catch (e) { }
+                    clearPin();
                     const inputEl = getPinInput(); if (inputEl) inputEl.value = '';
                     updatePinUI(); showMessage('PIN Cleared', 'PIN lock has been removed', 'success', false);
                 });
@@ -1785,35 +1791,58 @@ function initPinSettings() {
 // --- Init Section (Previously Missing) ---
 
 function initApp() {
-    // 1. Load Settings or use Defaults
-    if (!appState) appState = JSON.parse(JSON.stringify(defaultState));
+    try {
+        console.log("Initializing App...");
 
-    // 2. Ensure all settings arrays exist
-    ['retailers', 'locations', 'departments', 'designations'].forEach(key => {
-        if (!appState.settings[key] || !Array.isArray(appState.settings[key])) {
-            appState.settings[key] = defaultState.settings[key];
+        // 1. Load Settings or use Defaults (Sanity Check)
+        if (!appState) appState = JSON.parse(JSON.stringify(defaultState));
+
+        // 2. Data Structure Repair (if partial data exists)
+        if (!appState.settings) appState.settings = JSON.parse(JSON.stringify(defaultState.settings));
+        if (!appState.currentSheet) appState.currentSheet = JSON.parse(JSON.stringify(defaultState.currentSheet));
+        if (!appState.savedSheets) appState.savedSheets = [];
+
+        // Ensure all settings arrays exist
+        ['retailers', 'locations', 'departments', 'designations'].forEach(key => {
+            if (!appState.settings[key] || !Array.isArray(appState.settings[key])) {
+                appState.settings[key] = defaultState.settings[key] || [];
+            }
+        });
+
+        // 3. Initialize UI
+        const appContainer = document.querySelector('.app-container');
+        if (appContainer) appContainer.style.display = 'block';
+
+        initTheme();
+        updateAllDropdowns();
+        renderAttendanceGrid();
+        refreshIcons();
+        initPinSettings();
+        if (typeof initCalendar === 'function') initCalendar();
+        setupEventListeners();
+        renderDataTab();
+
+        window.appInitialized = true;
+        console.log("App Initialized Successfully");
+
+    } catch (err) {
+        console.error("CRITICAL INIT ERROR:", err);
+        const el = document.getElementById('attendance-list');
+        if (el) {
+            el.innerHTML = `<div style="padding: 2rem; color: #ef4444; text-align: center;">
+                <h3>App Crash Detected</h3>
+                <p>Please click 'Clear' or Refresh.</p>
+                <small>${err.message}</small>
+            </div>`;
         }
-    });
-
-    // 3. Initialize UI
-    document.querySelector('.app-container').style.display = 'block';
-    initTheme();
-    updateAllDropdowns();
-    renderAttendanceGrid();
-    refreshIcons();
-    initPinSettings();
-    initCalendar();
-    setupEventListeners();
-    renderDataTab();
-
-    window.appInitialized = true;
-    console.log("App Initialized Successfully");
+        alert("App failed to load: " + err.message);
+    }
 }
 
 // --- Startup Logic ---
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
-    const raw = localStorage.getItem(STORE_KEY);
+    const raw = safeStorage.getItem(STORE_KEY);
     const pinEnabled = isPinEnabled();
     const hasData = !!raw;
 
@@ -1829,7 +1858,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const errMsg = document.getElementById('pinErrorMsg');
 
         const attemptLogin = () => {
-            if (verifyPin(input.value)) {
+            const result = verifyPin(input.value);
+            if (result.success) {
                 sessionPin = input.value;
                 document.getElementById('pinModal').classList.add('hidden');
                 loadState(input.value); // Load with PIN
