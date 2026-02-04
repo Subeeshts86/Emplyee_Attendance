@@ -1156,10 +1156,15 @@ function generatePDF(action = 'save', optionalData = null) {
             const blob = doc.output('blob');
             const file = new File([blob], fname, { type: 'application/pdf' });
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                navigator.share({ files: [file], title: 'Monthly Timesheet', text: `Timesheet for ${MONTH_NAMES[s.month]} ${s.year}.` })
+                // Fix: Samsung/Android often fails if both text and files are sent. Sending only files + title.
+                navigator.share({ files: [file], title: 'Timesheet' })
                     .then(() => { showMessage('Success', 'PDF Shared!', 'success'); })
                     .catch((e) => {
-                        if (e.name !== 'AbortError') { doc.save(fname); showMessage('Saved', 'Downloaded (Share failed).', 'success'); }
+                        console.error("Share failed:", e); // Log for debugging
+                        if (e.name !== 'AbortError') {
+                            doc.save(fname);
+                            showMessage('Saved', 'Browser blocked sharing. File Downloaded.', 'success');
+                        }
                     });
             } else {
                 doc.save(fname);
