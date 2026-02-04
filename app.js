@@ -16,29 +16,60 @@ const defaultState = {
     savedSheets: []
 };
 
-// --- Localization Config ---
-const I18N = {
+// --- Language Handling ---
+const TRANSLATIONS = {
     en: {
         empName: "Employee Name", civilId: "Civil ID No.", retailer: "Retailer", location: "Location",
         department: "Department", designation: "Designation", month: "Month", year: "Year",
         day: "Day", login: "Login", logout: "Logout", remarks: "Remarks"
     },
     ar: {
-        empName: "اسم الموظف", civilId: "الرقم المدني", retailer: "التاجر", location: "الموقع",
+        empName: "اسم الموظف", civilId: "الرقم المدني", retailer: "بائع التجزئة", location: "الموقع",
         department: "القسم", designation: "المسمى الوظيفي", month: "الشهر", year: "السنة",
-        day: "اليوم", login: "وقت الدخول", logout: "وقت الخروج", remarks: "ملاحظات"
+        day: "اليوم", login: "دخول", logout: "خروج", remarks: "ملاحظات"
     }
 };
 
-let currentLang = localStorage.getItem('app_lang') || 'en';
+let currentLang = safeStorage.getItem('app_lang') || 'en';
 
+function updateLanguage() {
+    const t = TRANSLATIONS[currentLang];
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (t[key]) el.textContent = t[key];
+    });
+
+    const langBtn = document.getElementById('langToggle');
+    if (langBtn) langBtn.textContent = currentLang === 'en' ? 'ع' : 'EN';
+
+    document.documentElement.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
+    document.documentElement.lang = currentLang;
+}
 
 let appState;
 let sessionPin = null; // Stores key in memory only
 
+// Safe Storage Wrapper for Privacy Modes/Strict Browsers
+const safeStorage = {
+    getItem: (key) => {
+        try { return localStorage.getItem(key); }
+        catch (e) { console.warn('Storage Access Blocked', e); return null; }
+    },
+    setItem: (key, val) => {
+        try { localStorage.setItem(key, val); }
+        catch (e) {
+            console.error('Storage Write Failed', e);
+            if (e.name === 'QuotaExceededError') alert('Storage Full! Data could not be saved.');
+        }
+    },
+    removeItem: (key) => {
+        try { localStorage.removeItem(key); } catch (e) { }
+    }
+};
+
 // --- State Management : Load/Save with Encryption ---
 function loadState(pin = null) {
-    const raw = localStorage.getItem(STORE_KEY);
+    const raw = safeStorage.getItem(STORE_KEY);
 
     // 1. No Data: Return Defaults
     if (!raw) {
@@ -84,16 +115,10 @@ function saveState() {
             // Plain Text
             dataToSave = JSON.stringify(appState);
         }
-        localStorage.setItem(STORE_KEY, dataToSave);
+        safeStorage.setItem(STORE_KEY, dataToSave);
         console.log("Data saved successfully at " + new Date().toLocaleTimeString()); // Debug Confirmation
         updateStorageMonitor();
-    } catch (e) {
-        console.error("Save failed", e);
-        // Optional: Alert user if storage is full
-        if (e.name === 'QuotaExceededError') {
-            alert("Storage full! Your latest changes could not be saved.");
-        }
-    }
+    } catch (e) { console.error("Save Error", e); }
 }
 
 // --- Security: Activity Tracking for Auto-Logout ---
@@ -136,17 +161,51 @@ function hashPin(pin) {
 }
 
 function isPinEnabled() {
-    return localStorage.getItem('app_pin_enabled') === 'true';
+    return safeStorage.getItem('app_pin_enabled') === 'true';
 }
 
 function getStoredPinHash() {
-    return localStorage.getItem('app_pin_hash');
+    return safeStorage.getItem('app_pin_hash');
 }
 
 function verifyPin(enteredPin) {
     const storedHash = getStoredPinHash();
     const enteredHash = hashPin(enteredPin);
-    return storedHash === enteredHash;
+    if (storedHash === enteredHash) {
+        if (appState) {
+            // If we have state but just verifying PIN to unlock
+            sessionPin = enteredPin;
+            // No need to reload loadState if we already have it, but consistent to check
+            return { success: true };
+        } else {
+            if (loadState(enteredPin)) {
+                sessionPin = enteredPin;
+                return { success: true };
+            } else {
+                return { success: false };
+            }
+        }
+    }
+    return { success: false };
+}
+
+function setPin(newPin) {
+    if (!newPin || newPin.length !== 4) return false;
+    const hash = hashPin(newPin);
+    safeStorage.setItem('app_pin_hash', hash);
+    safeStorage.setItem('app_pin_enabled', 'true');
+    sessionPin = newPin;
+
+    // Re-save data encrypted
+    saveState();
+    return true;
+}
+
+function clearPin() {
+    safeStorage.removeItem('app_pin_hash');
+    safeStorage.setItem('app_pin_enabled', 'false');
+    sessionPin = null;
+    saveState(); // Save as plain text
 }
 
 function isEncrypted(str) {
@@ -1157,7 +1216,8 @@ function generatePDF(action = 'save', optionalData = null) {
             const file = new File([blob], fname, { type: 'application/pdf' });
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
                 // Fix: Samsung/Android often fails if both text and files are sent. Sending only files + title.
-                navigator.share({ files: [file], title: 'Timesheet' })
+                // Samsung Internet specifically might dislike Title + Files. Removing Title to be safe.
+                navigator.share({ files: [file] })
                     .then(() => { showMessage('Success', 'PDF Shared!', 'success'); })
                     .catch((e) => {
                         console.error("Share failed:", e); // Log for debugging
@@ -1245,7 +1305,7 @@ function setupEventListeners() {
     if (langToggle) {
         langToggle.onclick = () => {
             currentLang = currentLang === 'en' ? 'ar' : 'en';
-            localStorage.setItem('app_lang', currentLang);
+            safeStorage.setItem('app_lang', currentLang);
             updateLanguage();
         };
         updateLanguage();
@@ -1473,22 +1533,6 @@ if (typeof window !== 'undefined') {
     window.addEventListener('offline', updateOnlineStatus);
 }
 
-function updateLanguage() {
-    const t = I18N[currentLang];
-    const langToggle = document.getElementById('langToggle');
-    if (langToggle) {
-        if (currentLang === 'en') {
-            langToggle.textContent = 'ع'; langToggle.style.fontSize = '1.4rem'; langToggle.style.paddingBottom = '6px'; langToggle.style.lineHeight = '1';
-        } else {
-            langToggle.textContent = 'EN'; langToggle.style.fontSize = '0.9rem'; langToggle.style.paddingBottom = '0'; langToggle.style.lineHeight = '';
-        }
-    }
-    document.querySelectorAll('[data-i18n]').forEach(el => {
-        const key = el.getAttribute('data-i18n');
-        if (t[key]) el.textContent = t[key];
-    });
-}
-
 function showSettingsPinModal(callback) {
     const modal = document.getElementById('settings-pin-modal');
     const input = document.getElementById('settingsPinInput');
@@ -1506,7 +1550,7 @@ function showSettingsPinModal(callback) {
     const handleConfirm = () => {
         const pin = input.value;
         if (pin.length !== 4) { error.textContent = 'Enter 4 digits'; return; }
-        if (verifyPin(pin)) { cleanup(); if (callback) callback(); } else { error.textContent = 'Incorrect PIN'; input.value = ''; input.focus(); }
+        if (verifyPin(pin).success) { cleanup(); if (callback) callback(); } else { error.textContent = 'Incorrect PIN'; input.value = ''; input.focus(); }
     };
     confirmBtn.onclick = handleConfirm;
     input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); handleConfirm(); } }
@@ -1632,21 +1676,23 @@ function initPinEntry() {
         if (pin.length < 4) { errMsg.textContent = 'Enter 4-digit PIN'; return; }
         errMsg.textContent = 'Verifying...';
         if (window.pinAuthCallback) {
-            if (verifyPin(pin)) {
+            const result = verifyPin(pin);
+            if (result.success) {
                 const cb = window.pinAuthCallback; window.pinAuthCallback = null;
                 document.getElementById('pinModal').classList.add('hidden');
                 cb();
             } else { errMsg.textContent = 'Incorrect PIN'; pinInput.value = ''; }
             return;
         }
-        const rawData = localStorage.getItem(STORE_KEY);
+        const rawData = safeStorage.getItem(STORE_KEY);
         if (isEncrypted(rawData)) {
             const success = loadState(pin);
             if (success) { sessionPin = pin; document.getElementById('pinModal').classList.add('hidden'); initApp(); }
             else { errMsg.textContent = 'Incorrect PIN (Decryption Failed)'; pinInput.value = ''; }
             return;
         }
-        if (verifyPin(pin)) {
+        const result = verifyPin(pin);
+        if (result.success) {
             sessionPin = pin; loadState(null); document.getElementById('pinModal').classList.add('hidden'); initApp();
         } else { errMsg.textContent = 'Incorrect PIN'; pinInput.value = ''; }
     };
@@ -1693,7 +1739,7 @@ function initPinSettings() {
                     setTimeout(() => { if (document.getElementById('pinLockToggle')) document.getElementById('pinLockToggle').checked = true; }, 0);
                     showConfirm('Disable PIN Lock?', 'Are you sure you want to disable the PIN lock?', () => {
                         showSettingsPinModal(() => {
-                            localStorage.removeItem('app_pin_hash'); localStorage.removeItem('app_pin_enabled');
+                            clearPin();
                             const el = document.getElementById('pinLockToggle'); if (el) el.checked = false;
                             const inputEl = getPinInput(); if (inputEl) inputEl.value = '';
                             updatePinUI(); showMessage('PIN Disabled', 'Security lock removed', 'success', false);
@@ -1711,9 +1757,8 @@ function initPinSettings() {
             let pin = inputEl.value.replace(/\D/g, '');
             inputEl.value = pin;
             if (pin.length !== 4) { showMessage('Invalid PIN', 'Please enter exactly 4 digits', 'warning', false); return; }
-            const hash = hashPin(pin);
-            localStorage.setItem('app_pin_hash', hash); localStorage.setItem('app_pin_enabled', 'true'); sessionPin = pin;
-            saveState(); inputEl.value = ''; showMessage('PIN Saved', 'Your PIN has been set successfully', 'success', false); updatePinUI();
+            setPin(pin);
+            inputEl.value = ''; showMessage('PIN Saved', 'Your PIN has been set successfully', 'success', false); updatePinUI();
         });
     }
 
