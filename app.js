@@ -35,42 +35,18 @@ const defaultState = {
 };
 
 // --- Language Handling ---
-const TRANSLATIONS = {
-    en: {
-        empName: "Employee Name", civilId: "Civil ID No.", retailer: "Retailer", location: "Location",
-        department: "Department", designation: "Designation", month: "Month", year: "Year",
-        day: "Day", login: "Login", logout: "Logout", remarks: "Remarks",
-        namePlaceholder: "Enter Name", idPlaceholder: "Enter The No."
-    },
-    ar: {
-        empName: "اسم الموظف", civilId: "الرقم المدني", retailer: "بائع التجزئة", location: "الموقع",
-        department: "القسم", designation: "المسمى الوظيفي", month: "الشهر", year: "السنة",
-        day: "اليوم", login: "دخول", logout: "خروج", remarks: "ملاحظات",
-        namePlaceholder: "أدخل الاسم بالإنجليزية فقط", idPlaceholder: "أدخل الرقم"
+// --- Language Handling (Removed) ---
+// Enforce English Only
+function validateEnglishInput(e) {
+    const input = e.target;
+    // Regex: ASCII printable characters (0-127) only
+    const englishRegex = /^[\x00-\x7F]*$/;
+
+    if (!englishRegex.test(input.value)) {
+        // Remove non-English characters
+        input.value = input.value.replace(/[^\x00-\x7F]/g, '');
+        showMessage('Input Error', 'Please use English characters only.', 'error');
     }
-};
-
-let currentLang = safeStorage.getItem('app_lang') || 'en';
-
-function updateLanguage() {
-    const t = TRANSLATIONS[currentLang];
-    document.querySelectorAll('[data-i18n]').forEach(el => {
-        const key = el.getAttribute('data-i18n');
-        if (t[key]) el.textContent = t[key];
-    });
-
-    // Update Input Placeholders
-    const nameInp = document.getElementById('empName');
-    if (nameInp) nameInp.placeholder = t.namePlaceholder;
-
-    const idInp = document.getElementById('civilId');
-    if (idInp) idInp.placeholder = t.idPlaceholder;
-
-    const langBtn = document.getElementById('langToggle');
-    if (langBtn) langBtn.textContent = currentLang === 'en' ? 'ع' : 'EN';
-
-    document.documentElement.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
-    document.documentElement.lang = currentLang;
 }
 
 let appState;
@@ -752,6 +728,7 @@ function setupAddSetting(btnId, inpId, key) {
     btn.parentNode.replaceChild(newBtn, btn);
     newBtn.onclick = add;
     inp.onkeypress = (e) => { if (e.key === 'Enter') add(); };
+    inp.oninput = validateEnglishInput;
 }
 
 function resetToDefaults(confirm) {
@@ -1199,8 +1176,8 @@ function generatePDF(action = 'save', optionalData = null) {
             head: [['Date', 'Day', 'Login Time', 'Logout Time', 'Remarks']],
             body: tableBody,
             theme: 'grid',
-            styles: { font: 'helvetica', fontSize: 9.5, cellPadding: 1.6, lineColor: [60, 60, 60], lineWidth: 0.5, textColor: 0, valign: 'middle' },
-            headStyles: { fillColor: [64, 64, 64], textColor: 255, fontStyle: 'bold', lineColor: 255, lineWidth: 0.5, halign: 'center', minCellHeight: 25, valign: 'middle' },
+            styles: { font: 'helvetica', fontSize: 9.5, cellPadding: { top: 2, right: 2, bottom: 2, left: 5 }, lineColor: [60, 60, 60], lineWidth: 0.5, textColor: 0, valign: 'middle' },
+            headStyles: { fillColor: [64, 64, 64], textColor: 255, fontStyle: 'bold', lineColor: 255, lineWidth: 0.5, halign: 'center', minCellHeight: 25, valign: 'middle', cellPadding: 2 },
             columnStyles: { 0: { cellWidth: 103, halign: 'left' }, 1: { cellWidth: 103, halign: 'left' }, 2: { cellWidth: 103, halign: 'left' }, 3: { cellWidth: 103, halign: 'left' }, 4: { cellWidth: 103, halign: 'left' } },
             margin: { left: 40, right: 40 },
             tableWidth: 515,
@@ -1230,10 +1207,16 @@ function generatePDF(action = 'save', optionalData = null) {
         } else {
             const blob = doc.output('blob');
             const file = new File([blob], fname, { type: 'application/pdf' });
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            const shareData = {
+                files: [file],
+                title: 'Attendance Sheet',
+                text: `Attendance Sheet for ${MONTH_NAMES[s.month]} ${s.year}`
+            };
+
+            if (navigator.canShare && navigator.canShare(shareData)) {
                 // Fix: Samsung/Android often fails if both text and files are sent. Sending only files + title.
                 // Samsung Internet specifically might dislike Title + Files. Removing Title to be safe.
-                navigator.share({ files: [file] })
+                navigator.share(shareData)
                     .then(() => { showMessage('Success', 'PDF Shared!', 'success'); })
                     .catch((e) => {
                         console.error("Share failed:", e);
@@ -1298,6 +1281,7 @@ function setupEventListeners() {
         if (!el) return;
         el.value = appState.currentSheet[id] || '';
         el.oninput = (e) => {
+            if (id === 'empName') validateEnglishInput(e);
             if (id === 'civilId') e.target.value = e.target.value.replace(/\D/g, '').slice(0, 12);
             appState.currentSheet[id] = e.target.value;
             saveState();
@@ -1315,16 +1299,7 @@ function setupEventListeners() {
             if (window.lucide) window.lucide.createIcons();
         };
     });
-
-    const langToggle = document.getElementById('langToggle');
-    if (langToggle) {
-        langToggle.onclick = () => {
-            currentLang = currentLang === 'en' ? 'ar' : 'en';
-            safeStorage.setItem('app_lang', currentLang);
-            updateLanguage();
-        };
-        updateLanguage();
-    }
+    // --- Language Toggle Removed ---
 
     setupAddSetting('addRetailerBtn', 'newRetailer', 'retailers');
     setupAddSetting('addLocationBtn', 'newLocation', 'locations');
