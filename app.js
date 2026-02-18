@@ -498,7 +498,10 @@ window.openHeaderPicker = (type) => {
         if (type === 'month') appState.currentSheet.month = parseInt(newVal);
         else appState.currentSheet[type] = newVal;
 
-        if (type === 'month' || type === 'year') renderAttendanceGrid();
+        if (type === 'month' || type === 'year' || type === 'department') {
+            renderAttendanceGrid();
+            updateStats();
+        }
         saveState();
         updateAllDropdowns();
     });
@@ -517,6 +520,25 @@ window.openGridPicker = (dateKey, field, type, val) => {
     openPicker(type, val, (newVal) => updateAttendance(dateKey, field, newVal));
 }
 
+// --- Date Range Helper ---
+function getAttendanceRange(month, year, department) {
+    const m = parseInt(month);
+    const y = parseInt(year);
+
+    if (department === 'Anker') {
+        // Anker: 21st Previous Month to 20th Current Month
+        // Handle Jan (0) -> Prev is Dec (11) of Year - 1
+        const prevMonthDate = new Date(y, m - 1, 21);
+        const currMonthDate = new Date(y, m, 20);
+        return { start: prevMonthDate, end: currMonthDate, isSplit: true };
+    } else {
+        // Standard: 1st to Last Day of Current Month
+        const start = new Date(y, m, 1);
+        const end = new Date(y, m + 1, 0);
+        return { start, end, isSplit: false };
+    }
+}
+
 // --- Attendance Grid ---
 function renderAttendanceGrid() {
     const container = document.getElementById('attendance-list');
@@ -524,43 +546,52 @@ function renderAttendanceGrid() {
     container.innerHTML = '';
 
     const s = appState.currentSheet;
-    const days = getDaysInMonth(s.year, s.month);
+    const { start, end } = getAttendanceRange(s.month, s.year, s.department);
 
-    for (let i = 1; i <= days; i++) {
-        const dateKey = `${s.year}-${String(parseInt(s.month) + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-        const dateObj = new Date(s.year, s.month, i);
-        const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+    // Iterate from start date to end date
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const dateKey = `${yyyy}-${mm}-${dd}`;
+
+        const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
         const isFri = dayName === 'Fri';
 
         let defInH = '01', defInAmPm = 'PM', defOutH = '10', defOutAmPm = 'PM';
 
-        if (isRamadan(dateObj)) {
+        if (isRamadan(d)) {
             defInH = '07';
             defOutH = '01'; defOutAmPm = 'AM';
         }
 
-        let d = s.attendance[dateKey] || { inHour: defInH, inMin: '00', inAmPm: defInAmPm, outHour: defOutH, outMin: '00', outAmPm: defOutAmPm, remarks: '' };
+        let data = s.attendance[dateKey] || { inHour: defInH, inMin: '00', inAmPm: defInAmPm, outHour: defOutH, outMin: '00', outAmPm: defOutAmPm, remarks: '' };
 
-        if (!s.attendance[dateKey]) d = { ...d };
+        // Ensure we don't mutate state yet if not exists, but prepare to show default
+        if (!s.attendance[dateKey]) data = { ...data };
 
         const row = document.createElement('div');
         row.className = `attendance-day ${isFri ? 'weekend' : ''}`;
 
         const timeHTML = (h, m, ap, hKey, mKey, apKey) => {
-            const dis = !!d.remarks;
+            const dis = !!data.remarks;
             return `
             <div class="select-box time-box${dis ? ' disabled' : ''}" ${dis ? '' : `onclick="openGridTimePicker('${dateKey}', '${hKey}', '${mKey}', '${h}', '${m}')"`}><span>${(h && m) ? h + ':' + m : '--:--'}</span></div>
             <div class="select-box ampm-box${dis ? ' disabled' : ''}" ${dis ? '' : `onclick="openGridPicker('${dateKey}', '${apKey}', 'ampm', '${ap}')"`}><span>${ap || '--'}</span></div>
         `;
         };
 
+        // Display Day Number and Month (if split) for clarity
+        const displayDay = dd;
+        const displaySub = dayName + (s.department === 'Anker' ? ` <span style="font-size:0.6rem">(${d.toLocaleString('default', { month: 'short' })})</span>` : '');
+
         row.innerHTML = `
             <div class="row-top">
-                <div class="day-info"><span>${i}</span><small>${dayName}</small></div>
-                <div class="time-group">${timeHTML(d.inHour, d.inMin, d.inAmPm, 'inHour', 'inMin', 'inAmPm')}</div>
-                <div class="time-group">${timeHTML(d.outHour, d.outMin, d.outAmPm, 'outHour', 'outMin', 'outAmPm')}</div>
-                <div class="select-box remark-select" onclick="openGridPicker('${dateKey}', 'remarks', 'remarks', '${d.remarks}')">
-                    <span>${d.remarks || '-'}</span><i data-lucide="chevron-down" class="select-icon"></i>
+                <div class="day-info"><span>${displayDay}</span><small>${displaySub}</small></div>
+                <div class="time-group">${timeHTML(data.inHour, data.inMin, data.inAmPm, 'inHour', 'inMin', 'inAmPm')}</div>
+                <div class="time-group">${timeHTML(data.outHour, data.outMin, data.outAmPm, 'outHour', 'outMin', 'outAmPm')}</div>
+                <div class="select-box remark-select" onclick="openGridPicker('${dateKey}', 'remarks', 'remarks', '${data.remarks}')">
+                    <span>${data.remarks || '-'}</span><i data-lucide="chevron-down" class="select-icon"></i>
                 </div>
             </div>
         `;
@@ -823,22 +854,41 @@ function updateStats(targetMonth, targetYear) {
 
         if (relevantSheets.length === 0) return;
 
+        console.log("updateStats Debug:", { targetMonth, targetYear, empName, relevantSheetsCount: relevantSheets.length });
+
         const mergedData = {};
-        [...relevantSheets].reverse().forEach(sheet => {
+        [...relevantSheets].reverse().forEach((sheet, idx) => {
+            console.log(`Sheet ${idx} Dept: ${sheet.department}`);
             if (!sheet.attendance) return;
             Object.keys(sheet.attendance).forEach(key => {
                 mergedData[key] = sheet.attendance[key];
             });
         });
 
-        const daysInMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+        console.log("Merged Keys:", Object.keys(mergedData));
+
+        // Use department from the FIRST relevant sheet found (since we filtered by month/year/name)
+        // This ensures if we are viewing "Anker" data, we use "Anker" range even if dropdown says "Lenovo"
+        let sheetDept = appState.currentSheet.department;
+        if (relevantSheets.length > 0 && relevantSheets[0].department) {
+            sheetDept = relevantSheets[0].department;
+        }
+
+        const { start, end } = getAttendanceRange(targetMonth, targetYear, sheetDept);
+        console.log("Range:", { start, end, sheetDept });
+
         let workingDays = 0;
         let present = 0;
         let sickLeave = 0;
         let compOff = 0;
 
-        for (let i = 1; i <= daysInMonth; i++) {
-            const dateKey = `${targetYear}-${String(parseInt(targetMonth) + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+        // Iterate from start to end
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            const dateKey = `${yyyy}-${mm}-${dd}`;
+
             const record = mergedData[dateKey];
             let remark = "";
             if (record) remark = (record.remarks || "").trim();
@@ -846,22 +896,26 @@ function updateStats(targetMonth, targetYear) {
             const isWeeklyOff = remark === 'Weekly Off';
             const isWorkingDay = !isWeeklyOff;
 
+            // console.log(`Date: ${dateKey}, Record:`, record, `Remark: ${remark}`);
+
             if (isWorkingDay) {
                 workingDays++;
                 if (remark === 'Sick Leave') sickLeave++;
                 else if (remark === 'Comp Off') compOff++;
                 else if (remark !== "") { }
                 else if (record && record.inHour && record.outHour) present++;
-                else if (!record || remark === "") present++;
+                else if (!record || remark === "") present++; // Wait, if NO record, is it Present?
             }
         }
+
+        console.log("Calculated:", { workingDays, present, sickLeave, compOff });
 
         workingDaysEl.textContent = workingDays;
         presentEl.textContent = present;
         sickLeaveEl.textContent = sickLeave;
         compOffEl.textContent = compOff;
 
-    } catch (error) { }
+    } catch (error) { console.error("updateStats Error:", error); }
 }
 
 // FIX: Updated validateRequiredFields to trim Name on Save
@@ -1156,19 +1210,25 @@ function generatePDF(action = 'save', optionalData = null) {
         drawRow(startY + gap, "Civil ID No.:", s.civilId, "Department:", s.department);
         drawRow(startY + gap * 2, "Month:", `${MONTH_NAMES[s.month]} ${s.year}`, "Designation:", s.designation);
 
+        const { start, end } = getAttendanceRange(s.month, s.year, s.department);
         const tableBody = [];
-        for (let i = 1; i <= days; i++) {
-            const k = `${s.year}-${String(parseInt(s.month) + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-            const dateObj = new Date(s.year, s.month, i);
-            const defs = getDefaultTimes(dateObj);
-            let d = s.attendance[k] ? s.attendance[k] : { ...defs, remarks: '' };
-            const dateStr = `${String(i).padStart(2, '0')}-${MONTH_NAMES[s.month].substr(0, 3)}-${s.year}`;
+
+        // Iterate from start date to end date
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            const k = `${yyyy}-${mm}-${dd}`;
+
+            const defs = getDefaultTimes(d);
+            let data = s.attendance[k] ? s.attendance[k] : { ...defs, remarks: '' };
+            const dateStr = `${dd}-${d.toLocaleString('default', { month: 'short' })}-${yyyy}`;
 
             let tIn = '';
-            if (d.inHour) tIn = `${d.inHour}:${d.inMin || '00'} ${d.inAmPm || 'AM'}`;
+            if (data.inHour) tIn = `${data.inHour}:${data.inMin || '00'} ${data.inAmPm || 'AM'}`;
             let tOut = '';
-            if (d.outHour) tOut = `${d.outHour}:${d.outMin || '00'} ${d.outAmPm || 'PM'}`;
-            tableBody.push([dateStr, dateObj.toLocaleDateString('en-US', { weekday: 'long' }), tIn, tOut, d.remarks || '']);
+            if (data.outHour) tOut = `${data.outHour}:${data.outMin || '00'} ${data.outAmPm || 'PM'}`;
+            tableBody.push([dateStr, d.toLocaleDateString('en-US', { weekday: 'long' }), tIn, tOut, data.remarks || '']);
         }
 
         doc.autoTable({
@@ -1458,24 +1518,30 @@ function renderPreviewBody(container, data) {
     const gridCols = '44px 100px 100px 1fr';
     let gridHTML = `<div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; border-top: 1px solid var(--border);"><div style="display: grid; grid-template-columns: ${gridCols}; gap: 0.25rem; padding: 0.75rem 0.5rem; background: var(--bg-card); border-bottom: 1px solid var(--border); font-size: 0.7rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; text-align: center; align-items: center; flex-shrink: 0; z-index: 10;"><span>Day</span><span>Login</span><span>Logout</span><span>Remarks</span></div><div class="attendance-list" style="overflow-y: auto; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0; background: var(--bg-surface);">`;
 
-    const m = parseInt(data.month);
-    const y = parseInt(data.year);
-    const days = (m >= 0 && m < 12 && y > 2000) ? new Date(y, m + 1, 0).getDate() : 0;
+    const { start, end } = getAttendanceRange(data.month, data.year, data.department);
 
-    for (let i = 1; i <= days; i++) {
-        const k = `${y}-${String(m + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-        const dateObj = new Date(y, m, i);
-        const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+    // Iterate from start date to end date
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const k = `${yyyy}-${mm}-${dd}`;
+
+        const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
         const isFri = dayName === 'Fri';
-        const defs = getDefaultTimes(dateObj);
-        let d = data.attendance[k] || { ...defs, remarks: '' };
+        const defs = getDefaultTimes(d);
+        let dataItem = data.attendance[k] || { ...defs, remarks: '' };
+
+        // Display Day Number and Month (if split) for clarity
+        const displayDay = dd;
+        const displaySub = dayName + (data.department === 'Anker' ? ` <span style="font-size:0.6rem">(${d.toLocaleString('default', { month: 'short' })})</span>` : '');
 
         gridHTML += `
             <div class="attendance-day ${isFri ? 'weekend' : ''}" style="border-bottom: 1px solid var(--border); display: grid; grid-template-columns: ${gridCols}; gap: 0.25rem; align-items: center; padding: 0.5rem; background: ${isFri ? 'rgba(239, 68, 68, 0.05)' : 'transparent'};">
-                <div class="day-info" style="min-width: 0; width: 100%;"><span>${i}</span><small>${dayName}</small></div>
-                <div class="time-group" style="width: 100%;"><div class="select-box time-box${d.remarks ? ' disabled' : ''}" style="padding: 4px;" ${d.remarks ? '' : `onclick="openPreviewTime('${k}', 'inHour', 'inMin', '${d.inHour}', '${d.inMin}')"`}><span style="font-size:0.85rem;">${(d.inHour && d.inMin) ? d.inHour + ':' + d.inMin : '--:--'}</span></div><div class="select-box ampm-box${d.remarks ? ' disabled' : ''}" style="flex: 0 0 38px; padding: 0;" ${d.remarks ? '' : `onclick="openPreviewSingle('${k}', 'inAmPm', 'ampm', '${d.inAmPm}')"`}><span style="font-size:0.7rem;">${d.inAmPm || '-'}</span></div></div>
-                <div class="time-group" style="width: 100%;"><div class="select-box time-box${d.remarks ? ' disabled' : ''}" style="padding: 4px;" ${d.remarks ? '' : `onclick="openPreviewTime('${k}', 'outHour', 'outMin', '${d.outHour}', '${d.outMin}')"`}><span style="font-size:0.85rem;">${(d.outHour && d.outMin) ? d.outHour + ':' + d.outMin : '--:--'}</span></div><div class="select-box ampm-box${d.remarks ? ' disabled' : ''}" style="flex: 0 0 38px; padding: 0;" ${d.remarks ? '' : `onclick="openPreviewSingle('${k}', 'outAmPm', 'ampm', '${d.outAmPm}')"`}><span style="font-size:0.7rem;">${d.outAmPm || '-'}</span></div></div>
-                <div class="select-box remark-select" style="min-width: 0; width: 100%; padding: 4px 8px;" onclick="openPreviewSingle('${k}', 'remarks', 'remarks', '${d.remarks}')"><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.8rem;">${d.remarks || '-'}</span><i data-lucide="chevron-down" class="select-icon" style="width: 14px; height: 14px;"></i></div>
+                <div class="day-info" style="min-width: 0; width: 100%;"><span>${displayDay}</span><small>${displaySub}</small></div>
+                <div class="time-group" style="width: 100%;"><div class="select-box time-box${dataItem.remarks ? ' disabled' : ''}" style="padding: 4px;" ${dataItem.remarks ? '' : `onclick="openPreviewTime('${k}', 'inHour', 'inMin', '${dataItem.inHour}', '${dataItem.inMin}')"`}><span style="font-size:0.85rem;">${(dataItem.inHour && dataItem.inMin) ? dataItem.inHour + ':' + dataItem.inMin : '--:--'}</span></div><div class="select-box ampm-box${dataItem.remarks ? ' disabled' : ''}" style="flex: 0 0 38px; padding: 0;" ${dataItem.remarks ? '' : `onclick="openPreviewSingle('${k}', 'inAmPm', 'ampm', '${dataItem.inAmPm}')"`}><span style="font-size:0.7rem;">${dataItem.inAmPm || '-'}</span></div></div>
+                <div class="time-group" style="width: 100%;"><div class="select-box time-box${dataItem.remarks ? ' disabled' : ''}" style="padding: 4px;" ${dataItem.remarks ? '' : `onclick="openPreviewTime('${k}', 'outHour', 'outMin', '${dataItem.outHour}', '${dataItem.outMin}')"`}><span style="font-size:0.85rem;">${(dataItem.outHour && dataItem.outMin) ? dataItem.outHour + ':' + dataItem.outMin : '--:--'}</span></div><div class="select-box ampm-box${dataItem.remarks ? ' disabled' : ''}" style="flex: 0 0 38px; padding: 0;" ${dataItem.remarks ? '' : `onclick="openPreviewSingle('${k}', 'outAmPm', 'ampm', '${dataItem.outAmPm}')"`}><span style="font-size:0.7rem;">${dataItem.outAmPm || '-'}</span></div></div>
+                <div class="select-box remark-select" style="min-width: 0; width: 100%; padding: 4px 8px;" onclick="openPreviewSingle('${k}', 'remarks', 'remarks', '${dataItem.remarks}')"><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.8rem;">${dataItem.remarks || '-'}</span><i data-lucide="chevron-down" class="select-icon" style="width: 14px; height: 14px;"></i></div>
             </div>`;
     }
     gridHTML += '</div></div>';
