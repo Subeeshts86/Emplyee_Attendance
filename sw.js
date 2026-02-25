@@ -1,11 +1,11 @@
 // --- UPDATED sw.js ---
-const CACHE_NAME = 'attendance-app-v72'; // <--- Update to v72
+const CACHE_NAME = 'attendance-app-v73'; // <--- Update to v73
 const ASSETS = [
     './',
     './index.html',
-    './style.css?v=72',           // <--- Add version tag
-    './calendar_style.css?v=72',  // <--- Add version tag
-    './app.js?v=72',              // <--- Update version tag
+    './style.css?v=73',           // <--- Add version tag
+    './calendar_style.css?v=73',  // <--- Add version tag
+    './app.js?v=73',              // <--- Update version tag
     './manifest.json',
     './Attendance.png',
     'https://unpkg.com/lucide@0.469.0',

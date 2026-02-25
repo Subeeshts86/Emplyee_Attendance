@@ -967,9 +967,15 @@ function validateRequiredFields() {
             const inTime = convertTo24Hour(att.inHour, att.inMin, att.inAmPm);
             const outTime = convertTo24Hour(att.outHour, att.outMin, att.outAmPm);
 
-            if (outTime < inTime && outTime > 6) {
+            if (outTime === inTime) {
                 const day = dateKey.split('-')[2];
-                timeErrors.push(`Day ${day}: Checkout before checkin`);
+                timeErrors.push(`Day ${day}: Checkout same as checkin`);
+            } else if (outTime < inTime) {
+                const durationMin = (outTime + 1440) - inTime;
+                if (durationMin > 18 * 60) {
+                    const day = dateKey.split('-')[2];
+                    timeErrors.push(`Day ${day}: Shift exceeds 18 hours`);
+                }
             }
         }
     });
