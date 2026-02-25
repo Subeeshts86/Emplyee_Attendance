@@ -650,10 +650,13 @@ function validateTimeLogic(dateKey, d) {
     const inTime = to24(d.inHour, d.inMin, d.inAmPm);
     const outTime = to24(d.outHour, d.outMin, d.outAmPm);
 
-    if (outTime <= inTime) {
-        // Allow midnight crossing? "must be a +time" usually implies same day unless night shift.
-        // Assuming standard shift for now.
-        showMessage('Time Error', 'Logout time must be AFTER Login time.', 'warning');
+    if (outTime === inTime) {
+        showMessage('Time Error', 'Logout time cannot be exactly the same as Login time.', 'warning');
+    } else if (outTime < inTime) {
+        const durationMin = (outTime + 1440) - inTime;
+        if (durationMin > 18 * 60) {
+            showMessage('Time Warning', 'Unusually long shift detected. Please verify AM/PM.', 'warning');
+        }
     }
 }
 
